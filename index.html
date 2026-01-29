@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF → JPEG</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+
+    #container {
+      background: white;
+      width: 90%;
+      max-width: 600px;
+      margin-top: 40px;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    button {
+  display: inline-block;
+  width: 260px;
+  min-height: 48px;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 6px;
+  border: none;
+  background: #4caf50;
+  color: white;
+  cursor: pointer;
+  white-space: normal;
+
+  /* ← スマホで縦並びになったときの余白 */
+  margin-bottom: 12px;
+}
+
+/* スマホ用のレイアウト調整 */
+@media (max-width: 600px) {
+  button {
+    width: 100%;       /* スマホでは全幅にして押しやすく */
+    font-size: 18px;   /* 読みやすく */
+  }
+}
+@media (max-width: 600px) {
+  #dropArea {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  #folderButton {
+    display: none;
+  }
+}
+.note {
+  max-width: 600px;     /* 横幅の上限 */
+  margin: 12px auto;    /* 中央揃え（左右auto） */
+  padding: 0 12px;      /* 左右の余白 */
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+  text-align: center;   /* ← 中央揃え */
+}
+.note2 {
+  max-width: 600px;     /* 横幅の上限 */
+  margin: 12px auto;    /* 中央揃え（左右auto） */
+  padding: 0 12px;      /* 左右の余白 */
+  font-size: 12px;
+  color: #666;
+  line-height: 1.6;
+  text-align: center;   /* ← 中央揃え */
+}
+    button:hover {
+      background: #45a049;
+    }
+
+    button:disabled {
+      background: #bdbdbd;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    #progressContainer {
+      width: 100%;
+      margin: 20px auto;
+      background: #eee;
+      height: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #progressBar {
+      height: 100%;
+      width: 0%;
+      background: #4caf50;
+      transition: width 0.2s;
+    }
+
+    #thumbs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+      justify-content: center;
+    }
+
+    .thumb {
+      width: 150px;
+      border: 1px solid #ccc;
+      padding: 5px;
+      cursor: pointer;
+      background: white;
+      border-radius: 6px;
+    }
+
+    .thumb img {
+      width: 100%;
+      border-radius: 4px;
+    }
+
+    /* ▼ 保存ボタンのフェードイン */
+    #download {
+      opacity: 0;
+      transition: opacity 0.8s ease;
+      display: none;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background: #2196f3;
+      color: white;
+      border-radius: 6px;
+      font-size: 16px;
+      text-decoration: none;
+    }
+
+    #download.show {
+      opacity: 1;
+    }
+
+    #download:hover {
+      background: #1976d2;
+    }
+
+    #resetBtn {
+      display: none;
+      margin-top: 15px;
+      padding: 12px 24px;
+      background: #9e9e9e;
+      color: white;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #resetBtn:hover {
+      background: #757575;
+    }
+
+    #cancelBtn {
+      display: none;
+      margin-top: 15px;
+      padding: 12px 24px;
+      background: #e53935;
+      color: white;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #cancelBtn:hover {
+      background: #c62828;
+    }
+
+    #completeMsg {
+      opacity: 0;
+      transition: opacity 0.8s ease;
+      color: #4caf50;
+      font-size: 1em;
+      margin-top: 15px;
+      display: none;
+    }
+
+    #completeMsg.show {
+      opacity: 1;
+    }
+    /* ▼ ドラッグ中の背景変化（任意だけどおすすめ） */
+    body.dragover {background: #e3f2fd;
+    }
+    #dropArea {
+  margin-top: 20px;
+  padding: 40px 20px;
+  border: 2px dashed #90caf9;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1976d2;
+  font-size: 1em;
+  transition: 0.3s;
+  cursor: pointer;
+}
+
+#dropArea.dragover {
+  background: #e3f2fd;
+  border-color: #42a5f5;
+  color: #0d47a1;
+}
+.info-section {
+  margin-top: 40px;
+  padding: 20px;
+  font-size: 14px;
+  color: #555;
+  line-height: 1.7;
+  background: #fafafa;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  text-align: left;   /* ← これだけで左揃え */
+}
+
+.info-section h3 {
+  margin-top: 20px;
+  font-size: 16px;
+  color: #333;
+}
+  </style>
+</head>
+
+<body>
+  <div id="container">
+
+    <h2>PDF → JPEG変換<br>(1枚でも複数でも変換)</h2>
+    <p class="note">
+      選択されたファイルやフォルダはサーバーに送信されません。<br>すべてお使いのPCやスマホ内で処理されます。<br>
+
+</p>
+
+    <button onclick="fileInput.click()">PDFファイルを選択</button>
+    <button id="folderButton" onclick="folderInput.click()">フォルダを選択<br></button>
+    
+
+
+    <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none">
+    <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none">
+    
+    <div id="dropArea">ここに PDF をドラッグ＆ドロップ</div>
+    <div id="progressContainer"><div id="progressBar"></div></div>
+
+    <p id="completeMsg">変換が完了しました！</p>
+
+    <a id="download">保存</a>
+    <p id="downloadNote" style="display:none; color:gray; font-size:0.85em;">
+      ※保存されなかった変換データは、ページを閉じると自動的に消去されます。
+    </p>
+
+    <button id="cancelBtn">キャンセル</button>
+    <button id="resetBtn">リセット</button>
+    <p class="note2">
+      ※データが大きいと、時間がかかる場合があります。<br>
+      ※ご利用の端末によっては、メモリ不足により変換が途中で止まる場合があります。<br>
+      ※iPhoneでページが読み込めない場合、iCloudの「プライベートリレー」をOFFにすると改善することがあります。
+
+    <div id="thumbs"></div>
+    <div class="info-section">
+  <h3>■ サーバーを使用していないため無料で使えます</h3>
+  <p>
+    このツールはサーバーを一切使わず、すべての処理をあなたの端末の中だけで実行しています。
+    そのため、サーバーの維持費・通信費・ストレージ費用が発生しません。
+  </p>
+  <p>
+    一般的なオンライン変換サービスは、<br>
+    ・アップロードされたファイルをサーバーで処理<br>
+    ・変換結果をサーバーからダウンロード<br>
+    という仕組みのため、運営側にコストがかかります。
+  </p>
+  <p>
+    しかしこのツールは、ブラウザ内で PDF を読み込み、画像に変換し、保存するところまですべてローカルで完結するため、<br>
+    運営側のコストがゼロに近く、無料で提供できます。
+  </p>
+
+  <h3>■ アップロード不要</h3>
+  <p>
+    このツールはサーバーを使用していないため、アップロード不要です。
+  </p>
+  <p>
+    ・PDF はあなたの端末から外に出ない<br>
+    ・インターネットを経由しない<br>
+    ・変換処理はすべてあなたのブラウザのメモリ上で完結する<br>
+  </p>
+  <p>
+    そのため、サーバーへのアップロードが無く、プライバシー面で優れています。
+  </p>
+</div>
+
+    <script>
+      const fileInput = document.getElementById("fileInput");
+      const folderInput = document.getElementById("folderInput");
+      const progressBar = document.getElementById("progressBar");
+      const download = document.getElementById("download");
+      const thumbs = document.getElementById("thumbs");
+      const cancelBtn = document.getElementById("cancelBtn");
+      const resetBtn = document.getElementById("resetBtn");
+
+      let cancelRequested = false;
+
+      function resetScreen() {
+        cancelRequested = false;
+
+        cancelBtn.style.display = "none";
+        resetBtn.style.display = "none";
+
+        const msg = document.getElementById("completeMsg");
+        msg.style.display = "none";
+        msg.classList.remove("show");
+
+        download.style.display = "none";
+        download.classList.remove("show");
+
+        document.getElementById("downloadNote").style.display = "none";
+
+        thumbs.innerHTML = "";
+        progressBar.style.width = "0%";
+      }
+      /* ▼ ドラッグ＆ドロップ対応 */
+
+// デフォルト動作を無効化
+document.addEventListener("dragover", (e) => {
+  e.preventDefault();
+});
+
+document.addEventListener("dragenter", () => {
+  document.body.classList.add("dragover");
+});
+
+document.addEventListener("dragleave", () => {
+  document.body.classList.remove("dragover");
+});
+
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  document.body.classList.remove("dragover");
+
+  const droppedFiles = Array.from(e.dataTransfer.files);
+
+  // PDF のみ抽出
+  const pdfFiles = droppedFiles.filter(f =>
+    f.name.toLowerCase().endsWith(".pdf")
+  );
+
+  if (pdfFiles.length === 0) {
+    alert("PDFファイルをドロップしてください。");
+    return;
+  }
+  
+
+  resetScreen();
+  processFiles(pdfFiles);
+});
+const dropArea = document.getElementById("dropArea");
+
+// クリックでもファイル選択を開く
+dropArea.addEventListener("click", () => {
+  fileInput.click();
+});
+
+// ドラッグが乗った時
+dropArea.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropArea.classList.add("dragover");
+});
+
+// ドラッグが離れた時
+dropArea.addEventListener("dragleave", () => {
+  dropArea.classList.remove("dragover");
+});
+
+// ドロップされた時
+dropArea.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropArea.classList.remove("dragover");
+
+  const droppedFiles = Array.from(e.dataTransfer.files);
+  const pdfFiles = droppedFiles.filter(f =>
+    f.name.toLowerCase().endsWith(".pdf")
+  );
+
+  if (pdfFiles.length === 0) {
+    alert("PDFファイルをドロップしてください。");
+    return;
+  }
+
+  resetScreen();
+  processFiles(pdfFiles);
+});
+
+      fileInput.addEventListener("change", () => {
+        resetScreen();
+        const files = Array.from(fileInput.files);
+        processFiles(files);
+      });
+
+      folderInput.addEventListener("change", () => {
+        resetScreen();
+        const allFiles = Array.from(folderInput.files);
+        const pdfFiles = allFiles.filter(f => f.name.toLowerCase().endsWith(".pdf"));
+
+        if (pdfFiles.length !== allFiles.length) {
+          alert("PDF以外のデータは無視して変換を開始します。");
+        }
+        
+
+        processFiles(pdfFiles);
+      });
+
+      cancelBtn.onclick = () => {
+        cancelRequested = true;
+
+        cancelBtn.style.display = "none";
+        resetBtn.style.display = "inline-block";
+
+        fileInput.disabled = false;
+        folderInput.disabled = false;
+
+        alert("変換をキャンセルしました");
+      };
+
+      resetBtn.onclick = () => location.reload();
+
+      async function processFiles(files) {
+
+        fileInput.disabled = true;
+        folderInput.disabled = true;
+        cancelBtn.style.display = "inline-block";
+
+        if (files.length === 0) {
+          alert("PDF が見つかりません");
+          return;
+        }
+
+        thumbs.innerHTML = "";
+        progressBar.style.width = "0%";
+
+        const zip = new JSZip();
+        let processedPages = 0;
+        let totalPages = 0;
+
+        
+        const singlePDF = (files.length === 1 && totalPages === 1);
+
+        for (const file of files) {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          totalPages += pdf.numPages;
+        }
+
+        let jpegFiles = []; // ← PDF1つのときに使う
+
+        for (const file of files) {
+
+          if (cancelRequested) return;
+
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+          const baseName = file.name.replace(/\.pdf$/i, "");
+
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+
+            if (cancelRequested) return;
+
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 });
+
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            await page.render({ canvasContext: ctx, viewport }).promise;
+
+            const jpegData = canvas.toDataURL("image/jpeg");
+
+            if (singlePDF) {
+              jpegFiles.push({
+                name: `${baseName}_${String(pageNum).padStart(3, "0")}.jpg`,
+                data: jpegData
+              });
+            } else {
+              const base64 = jpegData.split(",")[1];
+              const pageStr = String(pageNum).padStart(3, "0");
+              zip.file(`${baseName}_${pageStr}.jpg`, base64, { base64: true });
+            }
+
+            const thumbDiv = document.createElement("div");
+            thumbDiv.className = "thumb";
+            thumbDiv.innerHTML = `<img src="${jpegData}"><div>${file.name} - p.${pageNum}</div>`;
+            thumbs.appendChild(thumbDiv);
+
+            processedPages++;
+            const percent = Math.floor((processedPages / totalPages) * 100);
+            progressBar.style.width = percent + "%";
+          }
+        }
+
+        fileInput.disabled = false;
+        folderInput.disabled = false;
+        cancelBtn.style.display = "none";
+
+        /* ▼ PDF が 1つの場合は ZIP ではなく JPEG を直接保存 */
+        if (singlePDF) {
+          const first = jpegFiles[0];
+          download.href = first.data;
+          download.download = first.name;
+        } else {
+          const zipBlob = await zip.generateAsync({ type: "blob" });
+          const url = URL.createObjectURL(zipBlob);
+          download.href = url;
+          download.download = "converted.zip";
+        }
+
+        download.style.display = "block";
+        setTimeout(() => download.classList.add("show"), 10);
+
+        document.getElementById("downloadNote").style.display = "block";
+        resetBtn.style.display = "inline-block";
+
+        const msg = document.getElementById("completeMsg");
+        msg.style.display = "block";
+        setTimeout(() => msg.classList.add("show"), 10);
+      }
+      
+    </script>
+
+  </div>
+</body>
+</html>
